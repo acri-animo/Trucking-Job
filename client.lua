@@ -15,16 +15,6 @@ local _jobData = nil
 local hostilePeds = {}
 local eventHandlers = {}
 
---Functions--
-
-function illJobItemCheck()
-    return Inventory.Check.Player:HasItem("vpn", 1)
-end
-
-local function GetReputationLevel()
-    return Reputation:GetLevel("Trucking")
-end
-
 local JobsConfig = {
     legal = {
         { label = 'Industrial Delivery', description = 'Deliver construction materials to job sites.', level = 0 },
@@ -48,6 +38,21 @@ local JobsConfig = {
     }
 }
 
+------------
+-- Functions
+------------
+
+-- Check if player has VPN item
+local function illJobItemCheck()
+    return Inventory.Check.Player:HasItem("vpn", 1)
+end
+
+-- Get player's trucking rep level to determine job availability
+local function GetReputationLevel()
+    return Reputation:GetLevel("Trucking")
+end
+
+-- Generate Job Items for ListMenu
 local function GenerateJobItems(jobType, reputation)
     local items = {}
     local hasVPN = illJobItemCheck()
@@ -75,7 +80,130 @@ local function GenerateJobItems(jobType, reputation)
     return items
 end
 
---Event Handlers--
+-- Get Random Dropoff Location
+local function getRandomDropoffLocation(dropCoords)
+    if dropCoords then
+        return dropCoords[math.random(1, #dropCoords)]
+    else
+        print("No dropoff locations found")
+    end
+end
+
+-- Spawn Illegal Trucking Peds
+local function SetupTruckPeds(peds)
+	for k, v in ipairs(peds) do
+		--print("Setting up ped with Network ID: ", v) -- Debug print
+		while not DoesEntityExist(NetworkGetEntityFromNetworkId(v)) do
+			Citizen.Wait(1)
+		end
+
+		local ped = NetworkGetEntityFromNetworkId(v)
+
+		local interior = GetInteriorFromEntity(ped)
+		if interior ~= 0 then
+			local roomHash = GetRoomKeyFromEntity(ped)
+			if roomHash ~= 0 then
+				ForceRoomForEntity(ped, interior, roomHash)
+				--print("Ped entity created: ", ped) -- Debug print
+			end
+		end
+
+		DecorSetBool(ped, "ScriptedPed", true)
+		SetEntityAsMissionEntity(ped, 1, 1)
+        SetEntityMaxHealth(ped, 1150)
+        SetEntityHealth(ped, 1150)
+        SetPedArmour(ped, 350)
+		SetPedRelationshipGroupDefaultHash(ped, `BOBCAT_SECURITY`)
+		SetPedRelationshipGroupHash(ped, `BOBCAT_SECURITY`)
+		SetPedRelationshipGroupHash(ped, `HATES_PLAYER`)
+        SetCanAttackFriendly(ped, false, true)
+		SetPedAsCop(ped)
+
+		TaskTurnPedToFaceEntity(ped, PlayerPedId(), 1.0)
+	end
+
+	for k, v in ipairs(peds) do
+		local ped = NetworkGetEntityFromNetworkId(v)
+        table.insert(hostilePeds, ped)
+
+		SetPedCombatAttributes(ped, 0, 1)
+		SetPedCombatAttributes(ped, 3, 1)
+		SetPedCombatAttributes(ped, 5, 1)
+		SetPedCombatAttributes(ped, 46, 1)
+		SetPedSeeingRange(ped, 3000.0)
+		SetPedHearingRange(ped, 3000.0)
+		SetPedAlertness(ped, 3)
+		SetPedCombatRange(ped, 2)
+		SetPedCombatMovement(ped, 2)
+		SetPedCanSwitchWeapon(ped, true)
+		SetPedSuffersCriticalHits(ped, false)
+		SetRunSprintMultiplierForPlayer(ped, 1.49)
+		TaskCombatHatedTargetsInArea(ped, GetEntityCoords(ped), 200.0, false)
+		SetPedAsEnemy(ped, true)
+		SetPedFleeAttributes(ped, 0, 0)
+
+		local _, cur = GetCurrentPedWeapon(ped, true)
+		SetPedInfiniteAmmo(ped, true, cur)
+		SetPedDropsWeaponsWhenDead(ped, false)
+
+		SetEntityInvincible(ped, false)
+
+		TaskGoToEntityWhileAimingAtEntity(ped, PlayerPedId(), PlayerPedId(), 16.0, true, 0, 15, 1, 1, 1566631136)
+		TaskCombatPed(ped, PlayerPedId(), 0, 16)
+	end
+
+    Citizen.CreateThread(function()
+        Citizen.Wait(300000)
+        for i, ped in ipairs(hostilePeds) do
+            if DoesEntityExist(ped) then
+                DeleteEntity(ped)
+                table.remove(hostilePeds, i)
+            end
+        end
+    end)
+end
+
+-- Monitor tanker/truck damage for fuel delivery job
+local function MonitorTankerDamageClient(truck, trailer)
+    if truck and trailer then
+        -- Store the initial health values
+        local initialTruckBodyHealth = GetVehicleBodyHealth(truck)
+        local initialTruckHealth = GetVehicleEngineHealth(truck)
+        local initialTrailerHealth = GetVehicleEngineHealth(trailer)
+
+        Citizen.CreateThread(function()
+            while DoesEntityExist(truck) and DoesEntityExist(trailer) do
+                local currentTruckBodyHealth = GetVehicleBodyHealth(truck)
+                local currentTruckHealth = GetVehicleEngineHealth(truck)
+                local currentTrailerHealth = GetVehicleEngineHealth(trailer)
+
+                if (initialTruckBodyHealth - currentTruckBodyHealth) >= 10 then
+                    Notification:Error("Tanker exploded due to damage!")
+                    AddExplosion(GetEntityCoords(truck), 2, 10.0, true, false, 1.0)
+                    AddExplosion(GetEntityCoords(trailer), 2, 10.0, true, false, 1.0)
+                    break
+                end
+
+                if (initialTruckHealth - currentTruckHealth) >= 10 or (initialTrailerHealth - currentTrailerHealth) >= 20 then
+                    Notification:Error("Tanker exploded due to damage!")
+                    AddExplosion(GetEntityCoords(truck), 2, 10.0, true, false, 1.0)
+                    AddExplosion(GetEntityCoords(trailer), 2, 10.0, true, false, 1.0)
+                    break
+                end
+
+                initialTruckBodyHealth = currentTruckBodyHealth
+                initialTruckHealth = currentTruckHealth
+                initialTrailerHealth = currentTrailerHealth
+
+                Citizen.Wait(1000)
+            end
+        end)
+    end
+end
+
+------------------
+-- Events/Handlers
+------------------
 
 AddEventHandler("Labor:Client:Setup", function()
     PedInteraction:Add("TruckingJob", GetHashKey("s_m_m_trucker_01"), vector3(1239.328, -3173.741, 6.105), 275.467, 25.0, {
@@ -165,16 +293,6 @@ AddEventHandler("Trucking:Client:JobPedMenu", function()
         })
     end
 end)
-
-
-local function getRandomDropoffLocation(dropCoords)
-    if dropCoords then
-        return dropCoords[math.random(1, #dropCoords)]
-    else
-        print("No dropoff locations found")
-    end
-end
-
 
 RegisterNetEvent("Trucking:Client:OnDuty", function(joiner, time)
     _joiner = joiner
@@ -320,121 +438,6 @@ RegisterNetEvent("Trucking:Client:OnDuty", function(joiner, time)
 
 end)
 
--- Spawn Illegal Trucking Peds
-
-function SetupTruckPeds(peds)
-	for k, v in ipairs(peds) do
-		--print("Setting up ped with Network ID: ", v) -- Debug print
-		while not DoesEntityExist(NetworkGetEntityFromNetworkId(v)) do
-			Citizen.Wait(1)
-		end
-
-		local ped = NetworkGetEntityFromNetworkId(v)
-
-		local interior = GetInteriorFromEntity(ped)
-		if interior ~= 0 then
-			local roomHash = GetRoomKeyFromEntity(ped)
-			if roomHash ~= 0 then
-				ForceRoomForEntity(ped, interior, roomHash)
-				--print("Ped entity created: ", ped) -- Debug print
-			end
-		end
-
-		DecorSetBool(ped, "ScriptedPed", true)
-		SetEntityAsMissionEntity(ped, 1, 1)
-        SetEntityMaxHealth(ped, 1150)
-        SetEntityHealth(ped, 1150)
-        SetPedArmour(ped, 350)
-		SetPedRelationshipGroupDefaultHash(ped, `BOBCAT_SECURITY`)
-		SetPedRelationshipGroupHash(ped, `BOBCAT_SECURITY`)
-		SetPedRelationshipGroupHash(ped, `HATES_PLAYER`)
-        SetCanAttackFriendly(ped, false, true)
-		SetPedAsCop(ped)
-
-		TaskTurnPedToFaceEntity(ped, PlayerPedId(), 1.0)
-	end
-
-	for k, v in ipairs(peds) do
-		local ped = NetworkGetEntityFromNetworkId(v)
-        table.insert(hostilePeds, ped)
-
-		SetPedCombatAttributes(ped, 0, 1)
-		SetPedCombatAttributes(ped, 3, 1)
-		SetPedCombatAttributes(ped, 5, 1)
-		SetPedCombatAttributes(ped, 46, 1)
-		SetPedSeeingRange(ped, 3000.0)
-		SetPedHearingRange(ped, 3000.0)
-		SetPedAlertness(ped, 3)
-		SetPedCombatRange(ped, 2)
-		SetPedCombatMovement(ped, 2)
-		SetPedCanSwitchWeapon(ped, true)
-		SetPedSuffersCriticalHits(ped, false)
-		SetRunSprintMultiplierForPlayer(ped, 1.49)
-		TaskCombatHatedTargetsInArea(ped, GetEntityCoords(ped), 200.0, false)
-		SetPedAsEnemy(ped, true)
-		SetPedFleeAttributes(ped, 0, 0)
-
-		local _, cur = GetCurrentPedWeapon(ped, true)
-		SetPedInfiniteAmmo(ped, true, cur)
-		SetPedDropsWeaponsWhenDead(ped, false)
-
-		SetEntityInvincible(ped, false)
-
-		TaskGoToEntityWhileAimingAtEntity(ped, PlayerPedId(), PlayerPedId(), 16.0, true, 0, 15, 1, 1, 1566631136)
-		TaskCombatPed(ped, PlayerPedId(), 0, 16)
-	end
-
-    Citizen.CreateThread(function()
-        Citizen.Wait(300000)
-        for i, ped in ipairs(hostilePeds) do
-            if DoesEntityExist(ped) then
-                DeleteEntity(ped)
-                table.remove(hostilePeds, i)
-            end
-        end
-    end)
-end
-
---BOOM BOOM MF--
-
-function MonitorTankerDamageClient(truck, trailer)
-    if truck and trailer then
-        -- Store the initial health values
-        local initialTruckBodyHealth = GetVehicleBodyHealth(truck)
-        local initialTruckHealth = GetVehicleEngineHealth(truck)
-        local initialTrailerHealth = GetVehicleEngineHealth(trailer)
-
-        Citizen.CreateThread(function()
-            while DoesEntityExist(truck) and DoesEntityExist(trailer) do
-                local currentTruckBodyHealth = GetVehicleBodyHealth(truck)
-                local currentTruckHealth = GetVehicleEngineHealth(truck)
-                local currentTrailerHealth = GetVehicleEngineHealth(trailer)
-
-                if (initialTruckBodyHealth - currentTruckBodyHealth) >= 10 then
-                    Notification:Error("Tanker exploded due to damage!")
-                    AddExplosion(GetEntityCoords(truck), 2, 10.0, true, false, 1.0)
-                    AddExplosion(GetEntityCoords(trailer), 2, 10.0, true, false, 1.0)
-                    break
-                end
-
-                if (initialTruckHealth - currentTruckHealth) >= 10 or (initialTrailerHealth - currentTrailerHealth) >= 20 then
-                    Notification:Error("Tanker exploded due to damage!")
-                    AddExplosion(GetEntityCoords(truck), 2, 10.0, true, false, 1.0)
-                    AddExplosion(GetEntityCoords(trailer), 2, 10.0, true, false, 1.0)
-                    break
-                end
-
-                initialTruckBodyHealth = currentTruckBodyHealth
-                initialTruckHealth = currentTruckHealth
-                initialTrailerHealth = currentTrailerHealth
-
-                Citizen.Wait(1000)
-            end
-        end)
-    end
-end
-
-
 AddEventHandler("Trucking:Client:StartJibbityJob", function(data)
     _jobData = data
     local joiner = _joiner
@@ -476,7 +479,6 @@ AddEventHandler("Trucking:Client:StartJibbityJob", function(data)
         end
     end)
 end)
-
 
 AddEventHandler("Trucking:Client:StartIllJibbity", function(data)
     _jobData = data

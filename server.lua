@@ -3,6 +3,7 @@ local _JOB = "Trucking"
 local _joiners = {}
 local _trucking = {}
 
+-- Function to distribute loot based on job type, level, and reputation (only the group leader gets the reward otherwise it would be broken)
 local function distributeLoot(source, job)
     local char = Fetch:CharacterSource(source)
     local SID = char:GetData("SID")
@@ -19,6 +20,7 @@ local function distributeLoot(source, job)
     end
 end
 
+-- Function to get the vehicle/trailer model for the job
 local function GetVehicleModelsForJob(data)
     local job = trucking.jobs[data.type][data.level]
     if job and job.truck and job.trailer then
@@ -27,11 +29,14 @@ local function GetVehicleModelsForJob(data)
     return nil, nil
 end
 
+
+-- Startup event
 AddEventHandler("Labor:Server:Startup", function()
     Callbacks:RegisterServerCallback("Trucking:StartJob", function(source, data, cb)
         local joiner = data.joiner
     
         if _trucking[joiner] ~= nil and _trucking[joiner].state == 0 then
+            -- The line below copies the job config based on the type of job player selects from the menu
             _trucking[joiner].job = deepcopy(trucking.jobs[data.type][data.level])
     
             if not _trucking[joiner].job then
@@ -39,12 +44,15 @@ AddEventHandler("Labor:Server:Startup", function()
                 cb(false)
                 return
             end
-    
+            
+            -- Establishes the job type and level for group
             _trucking[joiner].type = data.type
             _trucking[joiner].level = data.level
     
+            -- Randomly selects a dropoff location for the job from the config
             local randomDropoff = _trucking[joiner].job.dropoffLocations[math.random(#_trucking[joiner].job.dropoffLocations)]
     
+            -- Sends the event to the client to start the job
             Labor.Offers:Task(joiner, _JOB, "Get Truck and Trailer from Trucking Foreman")
             Labor.Workgroups:SendEvent(
                 joiner,
@@ -62,7 +70,7 @@ AddEventHandler("Labor:Server:Startup", function()
         end
     end)
     
-
+    -- Callback to spawn the truck and trailer for the job
     Callbacks:RegisterServerCallback("Trucking:TruckTrailerSpawn", function(source, data, cb)
         local truckingData = _trucking[_joiners[source]]
         if not truckingData or not truckingData.type or not truckingData.level then
@@ -79,14 +87,15 @@ AddEventHandler("Labor:Server:Startup", function()
         end
     
         if truckingData.truck == nil and truckingData.state == 1 then
-            local truckCoords = vector3(1244.750, -3155.875, 5.528)
-            local trailerCoords = vector4(1273.899, -3185.859, 5.904, 92.829)
+            local truckCoords = vector3(1244.750, -3155.875, 5.528) -- Truck spawn coords
+            local trailerCoords = vector4(1273.899, -3185.859, 5.904, 92.829) -- Trailer spawn coords
     
             -- Spawn truck
             Vehicles:SpawnTemp(source, truckModel, 'automobile', truckCoords, 271.579, function(truck, VIN)
                 Vehicles.Keys:Add(source, VIN)
                 truckingData.truck = truck
     
+                -- Spawn trailer
                 Vehicles:SpawnTemp(source, trailerModel, 'trailer', vector3(trailerCoords.x, trailerCoords.y, trailerCoords.z), trailerCoords.w, function(trailer, VIN)
                     truckingData.trailer = trailer
                     truckingData.state = 2
@@ -103,6 +112,7 @@ AddEventHandler("Labor:Server:Startup", function()
         end
     end)
 
+    -- Callback to dropoff the trailer
     Callbacks:RegisterServerCallback("Trucking:DropoffTrailer", function(source, data, cb)
         local truckingData = _trucking[_joiners[source]]
     
@@ -113,6 +123,7 @@ AddEventHandler("Labor:Server:Startup", function()
             local distance = #(pedCoords - trailerCoords)
             local truckDistance = #(pedCoords - truckCoords)
     
+            -- Distance check to ensure the truck is close to the dropoff ped
             if distance <= 25 and truckDistance <= 25 then
                 Vehicles:Delete(truckingData.trailer, function()
                     local char = Fetch:CharacterSource(source)
@@ -122,7 +133,8 @@ AddEventHandler("Labor:Server:Startup", function()
                         cb(false)
                         return
                     end
-    
+                    
+                    -- This establishes the type/level for job reward
                     local job = trucking.jobs[truckingData.type][truckingData.level]
                     if not job then
                         Execute:Client(source, "Notification", "Error", "Job configuration not found.")
@@ -131,6 +143,7 @@ AddEventHandler("Labor:Server:Startup", function()
                     end
     
                     if truckingData.type == "illegal" then
+                        -- The truckingData.level corresponds with the menu selection on client side (level 17 & 19 for illegal and level 10 for legal only have cash rewards right now)
                         if truckingData.level == 17 then
                             Wallet:Modify(source, math.random(5000,6000))
                         elseif truckingData.level == 19 then
@@ -163,6 +176,7 @@ AddEventHandler("Labor:Server:Startup", function()
         end
     end)
 
+    -- Callback to spawn the mf peds
     Callbacks:RegisterServerCallback("Trucking:SpawnMfPeds", function(source, data, cb)
         local truckPeds = {}
         local pedCoords = data.coords
@@ -185,6 +199,7 @@ AddEventHandler("Labor:Server:Startup", function()
         end
     end)
 
+    -- Callback to complete the job
     Callbacks:RegisterServerCallback("Trucking:CompleteJob", function(source, data, cb)
         local truckingData = _trucking[_joiners[source]]
     
@@ -193,6 +208,7 @@ AddEventHandler("Labor:Server:Startup", function()
             local pedCoords = GetEntityCoords(GetPlayerPed(source))
             local distance = #(pedCoords - truckCoords)
     
+            -- Distance check to ensure the truck is close to the player when turning in job (truck won't despawn if truck is too far away)
             if distance <= 25 then
                 Vehicles:Delete(truckingData.truck, function()
                     truckingData.truck = nil
@@ -210,6 +226,10 @@ AddEventHandler("Labor:Server:Startup", function()
         end
     end)    
 end)
+
+------------------
+-- Events/Handlers
+------------------
 
 AddEventHandler("Trucking:Server:OnDuty", function(joiner, members, isWorkgroup)
     _joiners[joiner] = joiner

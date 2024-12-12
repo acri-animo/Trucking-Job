@@ -356,7 +356,7 @@ RegisterNetEvent("Trucking:Client:OnDuty", function(joiner, time)
             Callbacks:ServerCallback("Trucking:TruckTrailerSpawn", {}, function(reject)
                 if reject then
                     _state = 2
-                    if _jobData.level == 8 then
+                    if _jobData.level == 10 then
                         Citizen.CreateThread(function()
                             while true do
                                 Citizen.Wait(1000)

@@ -1,4 +1,4 @@
-# Trucking-Job
+# FiveM Trucking Job (Sandbox/Mythic Framework)
 
 Fivem trucking job for SandboxRP version of Mythic framework.
 

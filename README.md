@@ -1,10 +1,12 @@
 # Trucking-Job
 
-Trucking job for Sandbox's version of Mythic framework.
+Fivem trucking job for SandboxRP version of Mythic framework.
 
-Requires Sandbox version of Mythic framework.
+Note: Requires Sandbox version of Mythic framework.
 
-You can rename the files as you wish and place them within the appropriate folders within sandbox-labor (client/server/config)
+
+
+You can rename the files as you wish and place them within the appropriate directories within sandbox-labor (client/server/config)
 
 You must also add the following to sandbox-labor > server > startup.lua (edit the pay & reputation as you wish)
 

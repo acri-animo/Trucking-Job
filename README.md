@@ -5,9 +5,9 @@ FiveM trucking job for SandboxRP version of Mythic framework.
 Note: Requires Sandbox version of Mythic framework.
 
 
-You can rename the files as you wish and place them within the appropriate directories within sandbox-labor (client/server/config)
+You can rename the files as you wish and place them within their respective directories within sandbox-labor (client/server/config).
 
-You must also add the following to sandbox-labor > server > startup.lua (edit the pay & reputation as you wish)
+You must also add the following to sandbox-labor > server > startup.lua (edit the pay & reputation as you wish).
 
 ```lua
 Labor.Jobs:Register("Trucking", "Trucking", 0, 1500, 100, false, {

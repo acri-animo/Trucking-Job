@@ -8,7 +8,7 @@ You can rename the files as you wish and place them within the appropriate folde
 
 You must also add the following to sandbox-labor > server > startup.lua (edit the pay & reputation as you wish)
 
-Labor.Jobs:Register("Trucking", "Trucking", 0, 1500, 100, false, {
+- Labor.Jobs:Register("Trucking", "Trucking", 0, 1500, 100, false, {
         { label = "Rank 1", value = 1500 },
         { label = "Rank 2", value = 3000 },
         { label = "Rank 3", value = 7000 },

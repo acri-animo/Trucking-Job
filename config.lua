@@ -108,6 +108,11 @@ trucking = {
                 dropProg = "Unloading fuel...",
                 dropPed = "s_m_m_cntrybar_01",
                 cashReward = 5000,
+                dropoffLocations = {
+                    vector4(634.951, 259.774, 102.090, 115.871),
+                    vector4(-2063.070, -304.554, 12.143, 94.247),
+                    vector4(-708.602, -925.319, 18.014, 176.300)
+                },
             },
             [15] = {
                 truck = "phantom",
